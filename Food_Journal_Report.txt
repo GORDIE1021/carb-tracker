@@ -1,0 +1,34 @@
+FOOD JOURNAL REPORT
+
+Date: May 22, 2025
+  Meal 1:
+    - Simple Entry (75g)
+    Total: 75g carbs
+  Daily Total: 75g carbs
+
+Date: May 23, 2025
+  Meal 1:
+    - Plain Entry (50g)
+    Total: 50g carbs
+  Daily Total: 50g carbs
+
+Date: May 24, 2025
+  Meal 1:
+    - Egg x1 (1g)
+    - Cottage Cheese x2 (10g)
+    - Apple x1 (25g)
+    Total: 36g carbs
+  Meal 2:
+    - Soup x1 (15g)
+    - Egg x1 (1g)
+    - BBQ Pork Rinds 14g (1g)
+    - Cottage Cheese x1 (5g)
+    Total: 22g carbs
+  Daily Total: 58g carbs
+
+Date: May 25, 2025
+  Meal 1:
+    - Cottage Cheese x2 (10g)
+    - Egg x1 (1g)
+    Total: 11g carbs
+  Daily Total: 11g carbs
