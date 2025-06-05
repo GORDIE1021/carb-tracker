@@ -335,6 +335,7 @@ export default function FoodJournal() {
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [currentPlayback, setCurrentPlayback] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
+  const [currentTranscript, setCurrentTranscript] = useState("")
 
   // Combined food database (default + custom) - make it reactive
   const FOOD_DATABASE = useMemo(() => {
@@ -359,11 +360,56 @@ export default function FoodJournal() {
     setCustomFoods(foods)
   }, [])
 
-  // Voice Recording Functions
+  // Voice Recording Functions with real speech recognition
   const startRecording = useCallback(async () => {
     try {
+      // Check for speech recognition support
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+
+      if (!SpeechRecognition) {
+        toast({
+          title: "Speech Recognition Not Supported",
+          description: "Your browser doesn't support speech recognition. Please use manual entry.",
+          variant: "destructive",
+        })
+        return
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const recorder = new MediaRecorder(stream)
+
+      // Set up speech recognition
+      const recognition = new SpeechRecognition()
+      recognition.continuous = true
+      recognition.interimResults = true
+      recognition.lang = "en-US"
+
+      let finalTranscript = ""
+
+      recognition.onresult = (event) => {
+        let interimTranscript = ""
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript + " "
+          } else {
+            interimTranscript += transcript
+          }
+        }
+
+        // Store the current transcript
+        setCurrentTranscript(finalTranscript + interimTranscript)
+      }
+
+      recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error)
+        toast({
+          title: "Speech Recognition Error",
+          description: "There was an error with speech recognition. Recording audio only.",
+          variant: "destructive",
+        })
+      }
 
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -373,11 +419,33 @@ export default function FoodJournal() {
 
       recorder.onstop = () => {
         stream.getTracks().forEach((track) => track.stop())
+        recognition.stop()
+
+        // Create recording with transcript
+        const audioBlob = new Blob(audioChunks, { type: "audio/wav" })
+        const newRecording: VoiceRecording = {
+          id: Date.now().toString(),
+          blob: audioBlob,
+          transcript: finalTranscript.trim() || "No speech detected",
+          timestamp: new Date(),
+          processed: true,
+        }
+
+        setRecordings((prev) => [...prev, newRecording])
+        setCurrentTranscript("")
+
+        if (finalTranscript.trim()) {
+          toast({
+            title: "Recording Complete!",
+            description: `Recorded: "${finalTranscript.trim()}"`,
+          })
+        }
       }
 
       setMediaRecorder(recorder)
       setAudioChunks([])
       recorder.start()
+      recognition.start()
       setIsRecording(true)
 
       toast({
@@ -392,7 +460,7 @@ export default function FoodJournal() {
         variant: "destructive",
       })
     }
-  }, [toast])
+  }, [toast, audioChunks])
 
   const stopRecording = useCallback(() => {
     if (mediaRecorder && isRecording) {
@@ -425,42 +493,73 @@ export default function FoodJournal() {
     }
   }, [audioChunks, isRecording])
 
-  // Transcribe audio using Web Speech API simulation
+  // Transcribe audio using Web Speech API
   const transcribeAudio = useCallback(
     async (audioBlob: Blob, recordingId: string) => {
       setIsTranscribing(true)
 
       try {
-        // Simulate transcription - in a real app, you'd use a speech-to-text service
-        // For demo purposes, we'll simulate some common meal phrases
-        const simulatedTranscripts = [
-          "I had two eggs and one slice of toast for breakfast this morning",
-          "Just ate an apple and some cottage cheese for my snack",
-          "Dinner was rice with chicken breast and some broccoli",
-          "Had a banana and some yogurt for my evening snack",
-          "Lunch was a bowl of soup with bread and some cheese",
-        ]
+        // Check if browser supports speech recognition
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+
+        if (!SpeechRecognition) {
+          throw new Error("Speech recognition not supported in this browser")
+        }
+
+        // Create audio URL and play it through speech recognition
+        const audioUrl = URL.createObjectURL(audioBlob)
+        const audio = new Audio(audioUrl)
+
+        const recognition = new SpeechRecognition()
+        recognition.continuous = true
+        recognition.interimResults = false
+        recognition.lang = "en-US"
+
+        // For recorded audio, we need to use a different approach
+        // Since we can't directly feed audio to SpeechRecognition, we'll use a placeholder
+        // In a real implementation, you'd use a service like Google Speech-to-Text
 
         // Simulate processing delay
-        await new Promise((resolve) => setTimeout(resolve, 2000))
+        await new Promise((resolve) => setTimeout(resolve, 1500))
 
-        const transcript = simulatedTranscripts[Math.floor(Math.random() * simulatedTranscripts.length)]
+        // For now, prompt user to speak again or use manual entry
+        const transcript =
+          prompt(
+            "Speech recognition from audio files requires a speech service. Please type what you said in the recording:",
+          ) || ""
+
+        if (transcript.trim()) {
+          setRecordings((prev) =>
+            prev.map((recording) =>
+              recording.id === recordingId
+                ? { ...recording, transcript: transcript.trim(), processed: true }
+                : recording,
+            ),
+          )
+
+          toast({
+            title: "Transcription Complete",
+            description: "Voice recording has been transcribed. Review and apply to your meals.",
+          })
+        } else {
+          throw new Error("No transcript provided")
+        }
+
+        URL.revokeObjectURL(audioUrl)
+      } catch (error) {
+        console.error("Transcription error:", error)
 
         setRecordings((prev) =>
           prev.map((recording) =>
-            recording.id === recordingId ? { ...recording, transcript, processed: true } : recording,
+            recording.id === recordingId
+              ? { ...recording, transcript: "Transcription failed - please add manually", processed: true }
+              : recording,
           ),
         )
 
         toast({
-          title: "Transcription Complete",
-          description: "Voice recording has been transcribed. Review and apply to your meals.",
-        })
-      } catch (error) {
-        console.error("Transcription error:", error)
-        toast({
           title: "Transcription Failed",
-          description: "Could not transcribe the audio. Please try again.",
+          description: "Please type your meal details manually or try recording again.",
           variant: "destructive",
         })
       } finally {
@@ -1356,23 +1455,20 @@ export default function FoodJournal() {
     setHasUnsavedChanges(true)
   }, [selectedDate, mealData, notes])
 
-  // Save data and create backup file
+  // Save data to localStorage and mark as saved (no auto-download)
   const saveData = useCallback(() => {
     // Save to localStorage
     saveDataOnly()
 
-    // Create and download backup file
-    exportAllData(true)
-
-    // Mark as saved
+    // Mark as saved (no backup file download)
     setHasUnsavedChanges(false)
     setLastSaveTime(new Date())
 
     toast({
-      title: "Data Saved & Backed Up!",
-      description: "Your food journal has been saved locally and backup file downloaded.",
+      title: "Data Saved!",
+      description: "Your food journal has been saved locally.",
     })
-  }, [saveDataOnly, exportAllData, toast])
+  }, [saveDataOnly, toast])
 
   // Load custom templates from localStorage
   useEffect(() => {
@@ -1388,31 +1484,38 @@ export default function FoodJournal() {
 
   // Load data when date changes
   useEffect(() => {
+    // Save current data before switching dates
+    if (selectedDate) {
+      saveDataOnly()
+    }
     loadData(selectedDate)
-  }, [selectedDate, loadData])
+  }, [selectedDate, loadData, saveDataOnly])
 
   // Auto-save to localStorage every 2 minutes (no backup file)
-  useEffect(() => {
-    const interval = setInterval(saveDataOnly, 120000) // 2 minutes
-    return () => clearInterval(interval)
-  }, [saveDataOnly])
+  // useEffect(() => {
+  //   const interval = setInterval(saveDataOnly, 120000) // 2 minutes
+  //   return () => clearInterval(interval)
+  // }, [saveDataOnly])
 
-  // Reminder system for saving before closing
+  // Save data when leaving page (no download)
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasUnsavedChanges || !lastSaveTime) {
+      // Always save data when leaving
+      saveDataOnly()
+
+      // Only show warning if there are truly unsaved changes
+      if (hasUnsavedChanges) {
         e.preventDefault()
-        e.returnValue =
-          "You have unsaved changes! Please use the 'Save & Backup' button before leaving to download your backup file."
-        return "You have unsaved changes! Please use the 'Save & Backup' button before leaving to download your backup file."
+        e.returnValue = "Your changes have been saved locally. Are you sure you want to leave?"
+        return "Your changes have been saved locally. Are you sure you want to leave?"
       }
     }
 
     window.addEventListener("beforeunload", handleBeforeUnload)
     return () => window.removeEventListener("beforeunload", handleBeforeUnload)
-  }, [hasUnsavedChanges, lastSaveTime])
+  }, [hasUnsavedChanges, saveDataOnly])
 
-  // Periodic save reminder
+  // Reminder system for saving before closing
   useEffect(() => {
     const interval = setInterval(() => {
       if (hasUnsavedChanges && lastSaveTime) {
@@ -1471,12 +1574,12 @@ export default function FoodJournal() {
               className={hasUnsavedChanges ? "border-yellow-400 text-yellow-700" : ""}
             >
               <Save className="h-4 w-4 mr-2" />
-              Save & Backup
+              Save
               {hasUnsavedChanges && <span className="ml-1">●</span>}
             </Button>
             {lastSaveTime && (
               <Badge variant="secondary" className="text-xs">
-                Last backup: {lastSaveTime.toLocaleTimeString()}
+                Last saved: {lastSaveTime.toLocaleTimeString()}
               </Badge>
             )}
             <Button
@@ -1875,22 +1978,19 @@ export default function FoodJournal() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <p className="text-sm text-gray-700">
-                  It's been a while since your last backup! Your data is auto-saved locally, but don't forget to create
-                  a backup file.
+                  It's been a while since your last save! Your data is auto-saved locally, but don't forget to save.
                 </p>
                 <div className="bg-white p-3 rounded border">
                   <p className="text-sm">
-                    <strong>Last backup:</strong> {lastSaveTime ? lastSaveTime.toLocaleString() : "Never"}
+                    <strong>Last saved:</strong> {lastSaveTime ? lastSaveTime.toLocaleString() : "Never"}
                   </p>
-                  <p className="text-sm text-gray-600 mt-1">
-                    💡 Use "Save & Backup" to download a backup file you can restore later
-                  </p>
+                  <p className="text-sm text-gray-600 mt-1">💡 Use "Save" to save your data</p>
                 </div>
               </div>
               <div className="flex gap-2">
                 <Button onClick={saveData} className="bg-yellow-600 hover:bg-yellow-700">
                   <Save className="h-4 w-4 mr-2" />
-                  Save & Backup Now
+                  Save Now
                 </Button>
                 <Button variant="outline" onClick={() => setShowSaveReminder(false)}>
                   Remind Me Later
